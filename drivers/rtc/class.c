@@ -71,7 +71,6 @@ static int rtc_suspend(struct device *dev)
 	getnstimeofday(&old_system);
 	rtc_tm_to_time(&tm, &old_rtc.tv_sec);
 
-
 	/*
 	 * To avoid drift caused by repeated suspend/resumes,
 	 * which each can add ~1 second drift error,

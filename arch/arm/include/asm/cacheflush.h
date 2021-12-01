@@ -154,6 +154,12 @@ extern void __cpuc_flush_user_range(unsigned long, unsigned long, unsigned int);
 extern void __cpuc_coherent_kern_range(unsigned long, unsigned long);
 extern int  __cpuc_coherent_user_range(unsigned long, unsigned long);
 extern void __cpuc_flush_dcache_area(void *, size_t);
+extern void __flush_dcache_user_area(void *addr, size_t len);
+extern void __clean_dcache_user_area(void *addr, size_t len);
+extern void __inval_dcache_user_area(void *addr, size_t len);
+extern void __flush_dcache_area(void *addr, size_t len);
+extern void __clean_dcache_area_poc(void *addr, size_t len);
+extern void __inval_dcache_area(void *addr, size_t len);
 
 /*
  * These are private to the dma-mapping API.  Do not use directly.
@@ -487,6 +493,15 @@ int set_memory_rw(unsigned long addr, int numpages);
 int set_memory_x(unsigned long addr, int numpages);
 int set_memory_nx(unsigned long addr, int numpages);
 
+#ifdef CONFIG_DEBUG_RODATA
+void set_kernel_text_rw(void);
+void set_kernel_text_ro(void);
+#else
+static inline void set_kernel_text_rw(void) { }
+static inline void set_kernel_text_ro(void) { }
+#endif
+
 void flush_uprobe_xol_access(struct page *page, unsigned long uaddr,
 			     void *kaddr, unsigned long len);
+
 #endif

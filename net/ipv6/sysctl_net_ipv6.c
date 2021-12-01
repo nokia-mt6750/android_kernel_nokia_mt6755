@@ -13,6 +13,7 @@
 #include <linux/export.h>
 #include <net/ndisc.h>
 #include <net/ipv6.h>
+#include <net/ip6_route.h>
 #include <net/addrconf.h>
 #include <net/inet_frag.h>
 
@@ -54,6 +55,20 @@ static struct ctl_table ipv6_table_template[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec
 	},
+	{
+		.procname	= "idgen_retries",
+		.data		= &init_net.ipv6.sysctl.idgen_retries,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname	= "idgen_delay",
+		.data		= &init_net.ipv6.sysctl.idgen_delay,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_jiffies,
+	},
 	{ }
 };
 
@@ -76,11 +91,23 @@ static struct ctl_table ipv6_rotable[] = {
 	{ }
 };
 
+static struct ctl_table net_table[] = {
+	{
+		.procname = "optr",
+		.data = &sysctl_optr,
+		.maxlen = sizeof(int),
+		.mode = 0664,
+		.proc_handler = proc_dointvec,
+	},
+	{ }
+};
+
 static int __net_init ipv6_sysctl_net_init(struct net *net)
 {
 	struct ctl_table *ipv6_table;
 	struct ctl_table *ipv6_route_table;
 	struct ctl_table *ipv6_icmp_table;
+	struct ctl_table_header *vzw_hdr;
 	int err;
 
 	err = -ENOMEM;
@@ -93,6 +120,8 @@ static int __net_init ipv6_sysctl_net_init(struct net *net)
 	ipv6_table[2].data = &net->ipv6.sysctl.flowlabel_consistency;
 	ipv6_table[3].data = &net->ipv6.sysctl.auto_flowlabels;
 	ipv6_table[4].data = &net->ipv6.sysctl.fwmark_reflect;
+	ipv6_table[5].data = &net->ipv6.sysctl.idgen_retries;
+	ipv6_table[6].data = &net->ipv6.sysctl.idgen_delay;
 
 	ipv6_route_table = ipv6_route_sysctl_init(net);
 	if (!ipv6_route_table)
@@ -115,6 +144,10 @@ static int __net_init ipv6_sysctl_net_init(struct net *net)
 		register_net_sysctl(net, "net/ipv6/icmp", ipv6_icmp_table);
 	if (!net->ipv6.sysctl.icmp_hdr)
 		goto out_unregister_route_table;
+
+	vzw_hdr = register_net_sysctl(net, "net", net_table);
+	if (!vzw_hdr)
+		pr_info("[mtk_net] register net sysctl optr is fail.\n");
 
 	err = 0;
 out:

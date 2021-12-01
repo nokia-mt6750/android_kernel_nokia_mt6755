@@ -52,6 +52,7 @@ obj-y				+= char/
 
 # gpu/ comes after char for AGP vs DRM startup
 obj-y				+= gpu/
+$(info MTK GPU +=gpu/ here)
 
 obj-$(CONFIG_CONNECTOR)		+= connector/
 
@@ -60,6 +61,7 @@ obj-$(CONFIG_FB_I810)           += video/fbdev/i810/
 obj-$(CONFIG_FB_INTEL)          += video/fbdev/intelfb/
 
 obj-$(CONFIG_PARPORT)		+= parport/
+obj-$(CONFIG_TRUSTY)		+= trusty/
 obj-y				+= base/ block/ misc/ mfd/ nfc/
 obj-$(CONFIG_DMA_SHARED_BUFFER) += dma-buf/
 obj-$(CONFIG_NUBUS)		+= nubus/
@@ -118,6 +120,7 @@ obj-$(CONFIG_CPU_IDLE)		+= cpuidle/
 obj-y				+= mmc/
 obj-$(CONFIG_MEMSTICK)		+= memstick/
 obj-y				+= leds/
+obj-$(CONFIG_SWITCH)		+= switch/
 obj-$(CONFIG_INFINIBAND)	+= infiniband/
 obj-$(CONFIG_SGI_SN)		+= sn/
 obj-y				+= firmware/

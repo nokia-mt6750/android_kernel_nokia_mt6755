@@ -32,7 +32,14 @@
 #include <linux/dma-mapping.h>
 #include <linux/netdev_features.h>
 #include <linux/sched.h>
-#include <net/flow_keys.h>
+#include <net/flow_dissector.h>
+
+/* net device ftrace debug define */
+#undef NETDEV_TRACE
+#ifdef NETDEV_TRACE
+#define NETDEV_DL_TRACE 1
+#define NETDEV_UL_TRACE 1
+#endif
 
 /* A. Checksumming of received packets by device.
  *
@@ -342,7 +349,6 @@ enum {
 	SKB_FCLONE_UNAVAILABLE,	/* skb has no fclone (from head_cache) */
 	SKB_FCLONE_ORIG,	/* orig skb (from fclone_cache) */
 	SKB_FCLONE_CLONE,	/* companion fclone skb (from fclone_cache) */
-	SKB_FCLONE_FREE,	/* this companion fclone skb is available */
 };
 
 enum {
@@ -656,6 +662,10 @@ struct sk_buff {
 				*data;
 	unsigned int		truesize;
 	atomic_t		users;
+
+#ifdef NETDEV_TRACE
+	unsigned int		dbg_flag;
+#endif
 };
 
 #ifdef __KERNEL__
@@ -812,7 +822,7 @@ static inline bool skb_fclone_busy(const struct sock *sk,
 	fclones = container_of(skb, struct sk_buff_fclones, skb1);
 
 	return skb->fclone == SKB_FCLONE_ORIG &&
-	       fclones->skb2.fclone == SKB_FCLONE_CLONE &&
+	       atomic_read(&fclones->fclone_ref) > 1 &&
 	       fclones->skb2.sk == sk;
 }
 
@@ -927,6 +937,9 @@ static inline __u32 skb_get_hash(struct sk_buff *skb)
 
 	return skb->hash;
 }
+
+__u32 skb_get_hash_perturb(const struct sk_buff *skb,
+			   const siphash_key_t *perturb);
 
 static inline __u32 skb_get_hash_raw(const struct sk_buff *skb)
 {
@@ -1928,8 +1941,8 @@ static inline void skb_probe_transport_header(struct sk_buff *skb,
 
 	if (skb_transport_header_was_set(skb))
 		return;
-	else if (skb_flow_dissect(skb, &keys))
-		skb_set_transport_header(skb, keys.thoff);
+	else if (skb_flow_dissect_flow_keys(skb, &keys))
+		skb_set_transport_header(skb, keys.control.thoff);
 	else
 		skb_set_transport_header(skb, offset_hint);
 }

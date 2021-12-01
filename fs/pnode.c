@@ -258,7 +258,7 @@ static int propagate_one(struct mount *m)
 		read_sequnlock_excl(&mount_lock);
 	}
 	hlist_add_head(&child->mnt_hash, list);
-	return 0;
+	return count_mounts(m->mnt_ns, child);
 }
 
 /*
@@ -410,4 +410,20 @@ int propagate_umount(struct hlist_head *list)
 	hlist_for_each_entry(mnt, list, mnt_hash)
 		__propagate_umount(mnt);
 	return 0;
+}
+
+void propagate_remount(struct mount *mnt)
+{
+	struct mount *parent = mnt->mnt_parent;
+	struct mount *p = mnt, *m;
+	struct super_block *sb = mnt->mnt.mnt_sb;
+
+	if (!sb->s_op->copy_mnt_data)
+		return;
+	for (p = propagation_next(parent, parent); p;
+				p = propagation_next(p, parent)) {
+		m = __lookup_mnt(&p->mnt, mnt->mnt_mountpoint);
+		if (m)
+			sb->s_op->copy_mnt_data(m->mnt.data, mnt->mnt.data);
+	}
 }

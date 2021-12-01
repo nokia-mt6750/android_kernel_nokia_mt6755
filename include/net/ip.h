@@ -31,7 +31,7 @@
 #include <net/route.h>
 #include <net/snmp.h>
 #include <net/flow.h>
-#include <net/flow_keys.h>
+#include <net/flow_dissector.h>
 
 #define IPV4_MIN_MTU		68			/* RFC 791 */
 
@@ -175,6 +175,7 @@ struct ip_reply_arg {
 				/* -1 if not needed */ 
 	int	    bound_dev_if;
 	u8  	    tos;
+	kuid_t	    uid;
 }; 
 
 #define IP_REPLY_ARG_NOSRCCHECK 1
@@ -362,10 +363,12 @@ static inline void inet_set_txhash(struct sock *sk)
 	struct inet_sock *inet = inet_sk(sk);
 	struct flow_keys keys;
 
-	keys.src = inet->inet_saddr;
-	keys.dst = inet->inet_daddr;
-	keys.port16[0] = inet->inet_sport;
-	keys.port16[1] = inet->inet_dport;
+	memset(&keys, 0, sizeof(keys));
+
+	keys.addrs.src = inet->inet_saddr;
+	keys.addrs.dst = inet->inet_daddr;
+	keys.ports.port16[0] = inet->inet_sport;
+	keys.ports.port16[1] = inet->inet_dport;
 
 	sk->sk_txhash = flow_hash_from_keys(&keys);
 }

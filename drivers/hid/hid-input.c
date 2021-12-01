@@ -950,6 +950,10 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 	}
 
 mapped:
+	/* Mapping failed, bail out */
+	if (!bit)
+		return;
+
 	if (device->driver->input_mapped && device->driver->input_mapped(device,
 				hidinput, field, usage, &bit, &max) < 0)
 		goto ignore;
@@ -1476,8 +1480,9 @@ int hidinput_connect(struct hid_device *hid, unsigned int force)
 				 * UGCI) cram a lot of unrelated inputs into the
 				 * same interface. */
 				hidinput->report = report;
-				if (drv->input_configured)
-					drv->input_configured(hid, hidinput);
+				if (drv->input_configured &&
+				    drv->input_configured(hid, hidinput))
+					goto out_cleanup;
 				if (input_register_device(hidinput->input))
 					goto out_cleanup;
 				hidinput = NULL;
@@ -1498,8 +1503,9 @@ int hidinput_connect(struct hid_device *hid, unsigned int force)
 	}
 
 	if (hidinput) {
-		if (drv->input_configured)
-			drv->input_configured(hid, hidinput);
+		if (drv->input_configured &&
+		    drv->input_configured(hid, hidinput))
+			goto out_cleanup;
 		if (input_register_device(hidinput->input))
 			goto out_cleanup;
 	}

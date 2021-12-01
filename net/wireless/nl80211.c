@@ -208,6 +208,36 @@ cfg80211_get_dev_from_info(struct net *netns, struct genl_info *info)
 	return __cfg80211_rdev_from_attrs(netns, info->attrs);
 }
 
+static int validate_beacon_head(const struct nlattr *attr)
+{
+	const u8 *data = nla_data(attr);
+	unsigned int len = nla_len(attr);
+	const struct element *elem;
+	const struct ieee80211_mgmt *mgmt = (void *)data;
+	unsigned int fixedlen = offsetof(struct ieee80211_mgmt,
+					 u.beacon.variable);
+
+	if (len < fixedlen)
+		goto err;
+
+	if (ieee80211_hdrlen(mgmt->frame_control) !=
+	    offsetof(struct ieee80211_mgmt, u.beacon))
+		goto err;
+
+	data += fixedlen;
+	len -= fixedlen;
+
+	for_each_element(elem, data, len) {
+		/* nothing */
+	}
+
+	if (for_each_element_completed(elem, data, len))
+		return 0;
+
+err:
+	return -EINVAL;
+}
+
 /* policy for the attributes */
 static const struct nla_policy nl80211_policy[NL80211_ATTR_MAX+1] = {
 	[NL80211_ATTR_WIPHY] = { .type = NLA_U32 },
@@ -470,6 +500,14 @@ nl80211_match_policy[NL80211_SCHED_SCAN_MATCH_ATTR_MAX + 1] = {
 	[NL80211_SCHED_SCAN_MATCH_ATTR_SSID] = { .type = NLA_BINARY,
 						 .len = IEEE80211_MAX_SSID_LEN },
 	[NL80211_SCHED_SCAN_MATCH_ATTR_RSSI] = { .type = NLA_U32 },
+};
+
+/* policy for packet pattern attributes */
+static const struct nla_policy
+nl80211_packet_pattern_policy[MAX_NL80211_PKTPAT + 1] = {
+	[NL80211_PKTPAT_MASK] = { .type = NLA_BINARY, },
+	[NL80211_PKTPAT_PATTERN] = { .type = NLA_BINARY, },
+	[NL80211_PKTPAT_OFFSET] = { .type = NLA_U32 },
 };
 
 static int nl80211_prepare_wdev_dump(struct sk_buff *skb,
@@ -3124,6 +3162,11 @@ static int nl80211_parse_beacon(struct nlattr *attrs[],
 	memset(bcn, 0, sizeof(*bcn));
 
 	if (attrs[NL80211_ATTR_BEACON_HEAD]) {
+		int ret = validate_beacon_head(attrs[NL80211_ATTR_BEACON_HEAD]);
+
+		if (ret)
+			return ret;
+
 		bcn->head = nla_data(attrs[NL80211_ATTR_BEACON_HEAD]);
 		bcn->head_len = nla_len(attrs[NL80211_ATTR_BEACON_HEAD]);
 		if (!bcn->head_len)
@@ -5574,6 +5617,24 @@ static int nl80211_trigger_scan(struct sk_buff *skb, struct genl_info *info)
 	return err;
 }
 
+static int nl80211_abort_scan(struct sk_buff *skb, struct genl_info *info)
+{
+	struct cfg80211_registered_device *rdev = info->user_ptr[0];
+	struct wireless_dev *wdev = info->user_ptr[1];
+
+	if (!rdev->ops->abort_scan)
+		return -EOPNOTSUPP;
+
+	if (rdev->scan_msg)
+		return 0;
+
+	if (!rdev->scan_req)
+		return -ENOENT;
+
+	rdev_abort_scan(rdev, wdev);
+	return 0;
+}
+
 static int nl80211_start_sched_scan(struct sk_buff *skb,
 				    struct genl_info *info)
 {
@@ -5848,6 +5909,9 @@ static int nl80211_start_sched_scan(struct sk_buff *skb,
 
 	err = rdev_sched_scan_start(rdev, dev, request);
 	if (!err) {
+		if (info->attrs[NL80211_ATTR_IFACE_SOCKET_OWNER])
+			request->owner_nlportid = info->snd_portid;
+
 		rdev->sched_scan_req = request;
 		nl80211_send_sched_scan(rdev, dev,
 					NL80211_CMD_START_SCHED_SCAN);
@@ -7885,8 +7949,11 @@ static int nl80211_tx_mgmt(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	if (info->attrs[NL80211_ATTR_DURATION]) {
-		if (!(rdev->wiphy.flags & WIPHY_FLAG_OFFCHAN_TX))
-			return -EINVAL;
+		/*  Here comment out the following code: bcz we has let supplicant pass the wait
+		 *  but our driver is still not support WIPHY_FLAG_OFFCHAN_TX
+		 *	if (!(rdev->wiphy.flags & WIPHY_FLAG_OFFCHAN_TX))
+		 *	return -EINVAL;
+		 */
 		params.wait = nla_get_u32(info->attrs[NL80211_ATTR_DURATION]);
 
 		/*
@@ -8652,7 +8719,7 @@ static int nl80211_set_wowlan(struct sk_buff *skb, struct genl_info *info)
 			u8 *mask_pat;
 
 			nla_parse(pat_tb, MAX_NL80211_PKTPAT, nla_data(pat),
-				  nla_len(pat), NULL);
+				  nla_len(pat), nl80211_packet_pattern_policy);
 			err = -EINVAL;
 			if (!pat_tb[NL80211_PKTPAT_MASK] ||
 			    !pat_tb[NL80211_PKTPAT_PATTERN])
@@ -8880,7 +8947,7 @@ static int nl80211_parse_coalesce_rule(struct cfg80211_registered_device *rdev,
 		u8 *mask_pat;
 
 		nla_parse(pat_tb, MAX_NL80211_PKTPAT, nla_data(pat),
-			  nla_len(pat), NULL);
+			  nla_len(pat), nl80211_packet_pattern_policy);
 		if (!pat_tb[NL80211_PKTPAT_MASK] ||
 		    !pat_tb[NL80211_PKTPAT_PATTERN])
 			return -EINVAL;
@@ -9868,6 +9935,14 @@ static const struct genl_ops nl80211_ops[] = {
 	{
 		.cmd = NL80211_CMD_TRIGGER_SCAN,
 		.doit = nl80211_trigger_scan,
+		.policy = nl80211_policy,
+		.flags = GENL_ADMIN_PERM,
+		.internal_flags = NL80211_FLAG_NEED_WDEV_UP |
+				  NL80211_FLAG_NEED_RTNL,
+	},
+	{
+		.cmd = NL80211_CMD_ABORT_SCAN,
+		.doit = nl80211_abort_scan,
 		.policy = nl80211_policy,
 		.flags = GENL_ADMIN_PERM,
 		.internal_flags = NL80211_FLAG_NEED_WDEV_UP |
@@ -11965,6 +12040,13 @@ static int nl80211_netlink_notify(struct notifier_block * nb,
 
 	list_for_each_entry_rcu(rdev, &cfg80211_rdev_list, list) {
 		bool schedule_destroy_work = false;
+		bool schedule_scan_stop = false;
+		struct cfg80211_sched_scan_request *sched_scan_req =
+			rcu_dereference(rdev->sched_scan_req);
+
+		if (sched_scan_req && notify->portid &&
+		    sched_scan_req->owner_nlportid == notify->portid)
+			schedule_scan_stop = true;
 
 		list_for_each_entry_rcu(wdev, &rdev->wdev_list, list) {
 			cfg80211_mlme_unregister_socket(wdev, notify->portid);
@@ -11995,6 +12077,12 @@ static int nl80211_netlink_notify(struct notifier_block * nb,
 				spin_unlock(&rdev->destroy_list_lock);
 				schedule_work(&rdev->destroy_work);
 			}
+		} else if (schedule_scan_stop) {
+			sched_scan_req->owner_nlportid = 0;
+
+			if (rdev->ops->sched_scan_stop &&
+			    rdev->wiphy.flags & WIPHY_FLAG_SUPPORTS_SCHED_SCAN)
+				schedule_work(&rdev->sched_scan_stop_wk);
 		}
 	}
 
