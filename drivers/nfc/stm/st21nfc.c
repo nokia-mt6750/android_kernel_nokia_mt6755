@@ -43,7 +43,7 @@
 
 #include <linux/regulator/consumer.h>
 #include <linux/kthread.h>
-#include <../../misc/mediatek/include/mt-plat/mt_boot_common.h>
+#include "../../misc/mediatek/include/mt-plat/mt_boot_common.h"
 
 /* Test for kernel version.
  * 3.18 => use DMA for I2C, no support for standardized
@@ -60,7 +60,7 @@
 #ifndef NO_MTK_CLK_MANAGEMENT
 # ifdef KERNEL318MTK
 //#  include <mt_clkbuf_ctl.h>
-#include <../../misc/mediatek/base/power/include/mt_clkbuf_ctl.h>
+#include "../../misc/mediatek/base/power/include/mt_clkbuf_ctl.h"
 # else
 #  include <mtk_clkbuf_ctl.h>
 # endif
